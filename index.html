@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fourier Series of a Square Wave</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            background-color: #f0f2f5; 
+            margin: 0;
+            padding: 20px;
+        }
+        .container { 
+            width: 100%; 
+            max-width: 1000px; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+        }
+        h1 { 
+            text-align: center; 
+            color: #333;
+        }
+        p.desc {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .slider-container { 
+            margin: 20px 0 40px 0; 
+            padding: 20px; 
+            background: #f8f9fa; 
+            border-radius: 8px; 
+            border: 1px solid #e9ecef;
+        }
+        .slider { 
+            width: 100%; 
+            margin-top: 15px; 
+            cursor: pointer;
+        }
+        .plot { 
+            width: 100%; 
+            height: 350px; 
+            margin-bottom: 30px; 
+        }
+        .two-col {
+            display: flex;
+            gap: 20px;
+        }
+        .two-col .plot {
+            flex: 1;
+            min-width: 0; /* allows flex items to shrink */
+        }
+        @media (max-width: 768px) {
+            .two-col { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Fourier Reconstruction of an Even Square Wave</h1>
+        <p class="desc">
+            An even square wave is symmetric around the y-axis, meaning its Fourier series consists exclusively of cosine functions.<br>
+            Use the slider below to add more frequency components and see how the reconstruction improves.
+        </p>
+        
+        <div class="slider-container">
+            <label for="nSlider" style="font-weight: bold; font-size: 1.1em;">
+                Maximum Harmonic Component (N): <span id="nValue" style="color: #007bff;">1</span>
+            </label>
+            <input type="range" id="nSlider" class="slider" min="1" max="301" step="2" value="1">
+        </div>
+
+        <div id="plot1" class="plot" style="height: 400px;"></div>
+        
+        <div class="two-col">
+            <div id="plot2" class="plot"></div>
+            <div id="plot3" class="plot"></div>
+        </div>
+    </div>
+
+    <script>
+        const nSlider = document.getElementById('nSlider');
+        const nValueLabel = document.getElementById('nValue');
+
+        const maxN = parseInt(nSlider.max);
+        const numPoints = 1000;
+        const x = [];
+        for (let i = 0; i < numPoints; i++) {
+            // Plot over 2 periods: -2*pi to 2*pi
+            x.push(-2 * Math.PI + (4 * Math.PI * i) / (numPoints - 1));
+        }
+
+        // Ideal even square wave (period = 2*pi, amplitude = 1)
+        // 1 for x in [-pi/2, pi/2], -1 for x in [-pi, -pi/2) U (pi/2, pi]
+        const ySquare = x.map(xi => {
+            let rem = ((xi % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); 
+            if (rem > Math.PI) rem -= 2 * Math.PI;
+            return (rem > -Math.PI / 2 && rem < Math.PI / 2) ? 1 : -1;
+        });
+
+        // The Fourier coefficient for the nth cosine term
+        function getFourierCoeff(n) {
+            if (n === 0) return 0; // DC offset is 0
+            return (4 / (n * Math.PI)) * Math.sin((n * Math.PI) / 2);
+        }
+
+        // The continuous sinc envelope function
+        function getSincEnvelope(x_val) {
+            if (x_val === 0) return 2; // limit as x -> 0
+            return (4 / (x_val * Math.PI)) * Math.sin((x_val * Math.PI) / 2);
+        }
+
+        function updatePlots(N) {
+            nValueLabel.innerText = N;
+
+            // --- Plot 1: Reconstruction ---
+            let yRecon = new Array(numPoints).fill(0);
+            for (let n = 1; n <= N; n += 2) {
+                let cn = getFourierCoeff(n);
+                for (let i = 0; i < numPoints; i++) {
+                    yRecon[i] += cn * Math.cos(n * x[i]);
+                }
+            }
+
+            Plotly.react('plot1', [
+                { 
+                    x: x, 
+                    y: ySquare, 
+                    name: 'Target Square Wave', 
+                    line: { color: 'rgba(150, 150, 150, 0.8)', width: 2, dash: 'dash' },
+                    hoverinfo: 'none'
+                },
+                { 
+                    x: x, 
+                    y: yRecon, 
+                    name: `Reconstruction (up to N=${N})`, 
+                    line: { color: '#007bff', width: 2 } 
+                }
+            ], {
+                title: 'Square Wave Reconstruction',
+                margin: { t: 40, b: 40, l: 40, r: 20 },
+                xaxis: { title: 'Time (t)' },
+                yaxis: { title: 'Amplitude', range: [-1.5, 1.5] },
+                legend: { orientation: 'h', y: -0.2 }
+            });
+
+            // --- Plot 2: Components (Sinc Envelope) ---
+            let nVals = [];
+            let cnVals = [];
+            let cnColors = [];
+            for (let n = 1; n <= maxN; n += 2) {
+                nVals.push(n);
+                cnVals.push(getFourierCoeff(n));
+                // Highlight the active component, color the included components, gray out the rest
+                if (n === N) {
+                    cnColors.push('#dc3545'); // Active (Red)
+                } else if (n < N) {
+                    cnColors.push('#007bff'); // Included (Blue)
+                } else {
+                    cnColors.push('rgba(200, 200, 200, 0.6)'); // Not yet included (Gray)
+                }
+            }
+
+            let continuousN = [];
+            let continuousSinc = [];
+            for (let i = 0; i <= maxN * 10; i++) {
+                let val = i / 10;
+                if (val === 0) val = 0.0001; // Avoid divide by zero
+                continuousN.push(val);
+                continuousSinc.push(getSincEnvelope(val));
+            }
+
+            Plotly.react('plot2', [
+                { 
+                    x: continuousN, 
+                    y: continuousSinc, 
+                    name: 'Sinc Envelope', 
+                    line: { color: '#28a745', dash: 'dot', width: 1 }, 
+                    hoverinfo: 'none',
+                    mode: 'lines'
+                },
+                { 
+                    x: nVals, 
+                    y: cnVals, 
+                    type: 'bar', 
+                    name: 'Cosine Coefficients (a_n)', 
+                    marker: { color: cnColors }, 
+                    width: 0.8
+                }
+            ], {
+                title: 'Fourier Coefficients',
+                margin: { t: 40, b: 40, l: 40, r: 20 },
+                xaxis: { title: 'Harmonic Number (n)', range: [0, maxN + 2] },
+                yaxis: { title: 'Amplitude (a_n)' },
+                showlegend: false
+            });
+
+            // --- Plot 3: The Current Nth Cosine Component ---
+            let cn_current = getFourierCoeff(N);
+            let yN = x.map(xi => cn_current * Math.cos(N * xi));
+            
+            Plotly.react('plot3', [
+                { 
+                    x: x, 
+                    y: yN, 
+                    line: { color: '#dc3545', width: 2 }, 
+                    name: `Component N=${N}` 
+                }
+            ], {
+                title: `Component N=${N} (Amplitude = ${cn_current.toFixed(4)})`,
+                margin: { t: 40, b: 40, l: 40, r: 20 },
+                xaxis: { title: 'Time (t)' },
+                yaxis: { title: 'Amplitude', range: [-1.5, 1.5] }, // Fixed range to compare with reconstruction
+                showlegend: false
+            });
+        }
+
+        // Initial draw
+        updatePlots(parseInt(nSlider.value));
+
+        // Event listener for slider
+        nSlider.addEventListener('input', (e) => {
+            updatePlots(parseInt(e.target.value));
+        });
+    </script>
+</body>
+</html>
